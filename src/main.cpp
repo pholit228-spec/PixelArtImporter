@@ -85,11 +85,8 @@ void importImage(std::filesystem::path const& path) {
             if (!object) continue;
             const cocos2d::ccColor3B pixelColor{r, g, b};
             object->setObjectColor(pixelColor);
-            // Apply the tint to the main color node too. The default block (ID 1)
-            // is not the colorable flat square used for pixel art.
-            if (auto mainColor = object->getMainColor()) {
-                mainColor->setColor(pixelColor);
-            }
+            // setObjectColor updates the Geometry Dash object colour data.
+            // GJSpriteColor is not a cocos2d::CCNode and has no setColor method.
             ++created;
         }
     }
