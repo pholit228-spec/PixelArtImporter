@@ -1,0 +1,34 @@
+{
+  "geode": "5.0.0",
+  "gd": {
+    "android": "2.2081",
+    "win": "2.2081",
+    "mac": "2.2081"
+  },
+  "id": "pixelart-importer",
+  "name": "PixelArt Importer",
+  "version": "v0.1.0",
+  "developer": "pholit228-spec",
+  "description": "Image and video to pixel-object level importer (development preview).",
+  "repository": "https://github.com/pholit228-spec/PixelArtImporter",
+  "tags": ["editor", "utility", "content"],
+  "settings": {
+    "max-pixels": {
+      "name": "Maximum pixels per import",
+      "description": "Safety limit for generated objects. Higher values can make the editor lag.",
+      "type": "int",
+      "default": 2500
+    },
+    "pixel-size": {
+      "name": "Pixel size",
+      "description": "World-space size of each generated pixel.",
+      "type": "float",
+      "default": 1.0
+    },
+    "skip-transparent": {
+      "name": "Skip transparent pixels",
+      "type": "bool",
+      "default": true
+    }
+  }
+}
