@@ -5,7 +5,9 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <filesystem>
 #include <string>
+#include <cctype>
 using namespace geode::prelude;
 
 namespace {
@@ -20,8 +22,19 @@ void importImage(std::filesystem::path const& path) {
         return;
     }
 
+    auto extension = path.extension().string();
+    std::transform(extension.begin(), extension.end(), extension.begin(),
+        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    auto format = cocos2d::CCImage::kFmtPng;
+    if (extension == ".jpg" || extension == ".jpeg") format = cocos2d::CCImage::kFmtJpg;
+    else if (extension == ".webp") format = cocos2d::CCImage::kFmtWebp;
+    else if (extension != ".png") {
+        FLAlertLayer::create("PixelArt Importer", "Unsupported format. Use PNG, JPG or WebP.", "OK")->show();
+        return;
+    }
+
     auto image = new cocos2d::CCImage();
-    if (!image->initWithImageFileThreadSafe(path.string().c_str())) {
+    if (!image->initWithImageFileThreadSafe(path.string().c_str(), format)) {
         image->release();
         FLAlertLayer::create("PixelArt Importer", "Could not decode this image. Try PNG, JPG or WebP.", "OK")->show();
         return;
@@ -64,7 +77,7 @@ void importImage(std::filesystem::path const& path) {
                 {origin.x + x * kPixelWorldSize, origin.y + (outHeight - 1 - y) * kPixelWorldSize}
             );
             if (!object) continue;
-            object->setObjectColor({r, g, b});
+            object->setObjectColor(cocos2d::ccColor3B{r, g, b});
             editor->addObject(object);
             ++created;
         }
