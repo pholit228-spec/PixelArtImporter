@@ -12,6 +12,8 @@ using namespace geode::prelude;
 
 namespace {
 constexpr int kMaxPixels = 2500;
+// Geometry Dash object 207 is the colorable flat square, unlike the default solid block (ID 1).
+constexpr int kPixelObjectId = 207;
 constexpr float kPixelWorldSize = 30.f;
 constexpr uint8_t kAlphaThreshold = 32;
 
@@ -76,12 +78,18 @@ void importImage(std::filesystem::path const& path) {
             // object collections. GameObject::createObject / LevelEditorLayer::addObject
             // are not part of the Geometry Dash 2.2081 bindings.
             auto object = editor->createObject(
-                1,
+                kPixelObjectId,
                 {origin.x + x * kPixelWorldSize, origin.y + (outHeight - 1 - y) * kPixelWorldSize},
                 false
             );
             if (!object) continue;
-            object->setObjectColor(cocos2d::ccColor3B{r, g, b});
+            const cocos2d::ccColor3B pixelColor{r, g, b};
+            object->setObjectColor(pixelColor);
+            // Apply the tint to the main color node too. The default block (ID 1)
+            // is not the colorable flat square used for pixel art.
+            if (auto mainColor = object->getMainColor()) {
+                mainColor->setColor(pixelColor);
+            }
             ++created;
         }
     }
