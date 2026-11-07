@@ -72,13 +72,16 @@ void importImage(std::filesystem::path const& path) {
             const uint8_t a = channels == 4 ? pixels[index + 3] : 255;
             if (a <= kAlphaThreshold) continue;
 
-            auto object = GameObject::createObject(
+            // LevelEditorLayer owns object creation and inserts it into the editor's
+            // object collections. GameObject::createObject / LevelEditorLayer::addObject
+            // are not part of the Geometry Dash 2.2081 bindings.
+            auto object = editor->createObject(
                 1,
-                {origin.x + x * kPixelWorldSize, origin.y + (outHeight - 1 - y) * kPixelWorldSize}
+                {origin.x + x * kPixelWorldSize, origin.y + (outHeight - 1 - y) * kPixelWorldSize},
+                false
             );
             if (!object) continue;
             object->setObjectColor(cocos2d::ccColor3B{r, g, b});
-            editor->addObject(object);
             ++created;
         }
     }
