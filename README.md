@@ -1,49 +1,28 @@
-# PixelArt Importer — Geode development project
+# PixelArtImporter
 
-A cross-platform starter project for a Geometry Dash editor mod that converts raster images/video frames into coloured square objects.
+A Geometry Dash Geode editor mod for importing images as coloured square blocks.
 
-## Current state (read this first)
+## Implemented in v0.2.0
 
-This ZIP is a **development scaffold**, not a finished importer. It contains:
+- Adds an Import Image button to the level editor.
+- Uses Geode's cross-platform native file picker.
+- Decodes PNG, JPG/JPEG and WebP through Cocos2d's image decoder.
+- Preserves aspect ratio and downsamples large images to a maximum of 2,500 source samples.
+- Skips near-transparent pixels and creates colour-matched block objects in the open level.
+- Uses Geode 5.11.2 or newer to avoid an SDK/bindings compatibility issue in the previous 5.0.0 build.
 
-- a Geode C++ mod entry point and metadata;
-- a platform matrix GitHub Actions workflow (Windows, macOS, Android 32/64-bit);
-- a platform-independent pixel-processing core: nearest-neighbour resizing, transparent-pixel filtering, colour quantization, and per-frame pixel diffing.
+Imported blocks are placed starting at level coordinate (150, 150), with one 30x30 block per sampled pixel. Import into a test level first; dense artwork can still make the editor slow.
 
-The in-game file picker, image decoder integration, editor object creation/serialization, and video playback/trigger generation are not implemented yet. Consequently, this initial build only verifies the Geode project and conversion core; it does not yet add a working Import button or create level objects. The APIs for these pieces must be implemented and tested against the exact Geometry Dash/Geode version before calling the feature complete.
+## Video status
 
-## Build with GitHub Actions
+MP4, WebM and GIF frame import and trigger-based animation are not implemented in this version. The pixel-diff core is only a processing primitive; it does not create animation triggers. Video decoding requires a separate cross-platform decoder and the editor's trigger/object serialization needs to be implemented and tested. Do not treat video support as available yet.
 
-1. Push this project to a GitHub repository, keeping the `.github/workflows` directory.
-2. Open **Actions** and enable workflows if GitHub asks.
-3. Run **Build Geode mod** manually, or push a commit.
-4. Open the completed workflow run and download its platform artifacts. The Geode build action produces `.geode` package output for each target.
+## Build
 
-The workflow uses the official `geode-sdk/build-geode-mod` action and currently builds Win64, MacOS, Android32 and Android64 as separate artifacts.
+The GitHub Actions workflow builds Win64, macOS, Android32 and Android64 artifacts. Open the Actions tab and download the artifact from a successful run.
 
-## Local build
-
-Install the Geode SDK/CLI for your platform, then run:
-
-```sh
-geode build
-```
-
-## Planned implementation
-
-1. Add a desktop/mobile file picker and decode PNG/JPEG/WebP (and video frame extraction).
-2. Downsample before allocating game objects; enforce the `max-pixels` cap.
-3. Convert pixels into editor block objects and colour channels, with batched insertion and undo support.
-4. Video mode A: pre-create pixel objects and animate position/visibility with move/alpha triggers.
-5. Video mode B: pre-create pixel objects and animate colour using colour triggers, emitting only changed pixels per frame.
-6. Add duration/FPS controls, preview, cancel/progress UI, and memory limits suitable for phones.
-
-## Performance notes
-
-A full-colour image with one object per pixel can create thousands of objects. Start with a low resolution (for example 32×32), use palette quantization, skip transparent pixels, and cap frame count. Video frame-by-frame colour changes can generate a very large trigger graph, so frame differencing and a configurable FPS are essential.
-
-## References
-
-- Geode template collection: https://github.com/geode-sdk/template-mods
-- Geode build action: https://github.com/geode-sdk/build-geode-mod
-- Geode SDK: https://github.com/geode-sdk/geode
+Local build:
+- Install Geode CLI.
+- Run geode sdk install.
+- Run geode sdk update 5.11.2.
+- Run geode build.
