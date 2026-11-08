@@ -77,6 +77,10 @@ void importImage(std::filesystem::path const& path) {
     using RGB = std::tuple<uint8_t, uint8_t, uint8_t>;
     std::map<RGB, int> palette;
     int created = 0;
+    // getNextColorChannel() reports the first available channel. Calling it again
+    // before adding a channel action can return that same ID, so reserve a local
+    // monotonically increasing range for this import.
+    int nextChannelID = editor->getNextColorChannel();
     const cocos2d::CCPoint origin{150.f, 150.f};
 
     auto nearestChannel = [&palette](uint8_t r, uint8_t g, uint8_t b) -> int {
@@ -111,16 +115,18 @@ void importImage(std::filesystem::path const& path) {
 
             auto it = palette.find(key);
             if (it == palette.end()) {
-                const int channelID = editor->getNextColorChannel();
+                const int channelID = nextChannelID;
                 if (channelID > 0 && channelID <= 999) {
                     const cocos2d::ccColor3B color{r, g, b};
                     auto action = ColorAction::create();
                     if (!action) continue;
+                    action->m_colorID = channelID;
                     action->m_color = color;
                     action->m_fromColor = color;
                     action->m_toColor = color;
                     action->m_playerColor = 0;
                     manager->setColorAction(action, channelID);
+                    ++nextChannelID;
                     it = palette.emplace(key, channelID).first;
                 } else {
                     // The level has no more free custom channels. Reuse the closest
