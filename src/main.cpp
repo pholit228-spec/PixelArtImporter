@@ -7,6 +7,8 @@
 #include <cstdint>
 #include <filesystem>
 #include <string>
+#include <map>
+#include <tuple>
 #include <cctype>
 using namespace geode::prelude;
 
@@ -61,32 +63,73 @@ void importImage(std::filesystem::path const& path) {
     const int outWidth = std::max(1, static_cast<int>(std::floor(width / scale)));
     const int outHeight = std::max(1, static_cast<int>(std::floor(height / scale)));
 
+    auto manager = editor->m_effectManager;
+    if (!manager) {
+        image->release();
+        FLAlertLayer::create("PixelArt Importer", "Could not access the level color manager.", "OK")->show();
+        return;
+    }
+
+    // Geometry Dash stores editor object colours as references to color channels.
+    // 8 levels per RGB component yields at most 512 palette entries.
+    constexpr int kPaletteLevels = 8;
+    auto quantize = [](uint8_t value) -> uint8_t {
+        constexpr int step = 255 / (kPaletteLevels - 1);
+        return static_cast<uint8_t>(std::clamp(
+            static_cast<int>(std::lround(static_cast<double>(value) / step)) * step, 0, 255
+        ));
+    };
+    using RGB = std::tuple<uint8_t, uint8_t, uint8_t>;
+    std::map<RGB, int> palette;
     int created = 0;
     const cocos2d::CCPoint origin{150.f, 150.f};
+
     for (int y = 0; y < outHeight; ++y) {
         const int sy = std::min(height - 1, static_cast<int>((y + .5) * height / outHeight));
         for (int x = 0; x < outWidth; ++x) {
             const int sx = std::min(width - 1, static_cast<int>((x + .5) * width / outWidth));
             const auto index = (static_cast<size_t>(sy) * width + sx) * bytesPerPixel;
-            const uint8_t r = pixels[index];
-            const uint8_t g = pixels[index + 1];
-            const uint8_t b = pixels[index + 2];
             const uint8_t a = channels == 4 ? pixels[index + 3] : 255;
             if (a <= kAlphaThreshold) continue;
 
-            // LevelEditorLayer owns object creation and inserts it into the editor's
-            // object collections. GameObject::createObject / LevelEditorLayer::addObject
-            // are not part of the Geometry Dash 2.2081 bindings.
+            const uint8_t r = quantize(pixels[index]);
+            const uint8_t g = quantize(pixels[index + 1]);
+            const uint8_t b = quantize(pixels[index + 2]);
+            const RGB key{r, g, b};
+
+            auto it = palette.find(key);
+            if (it == palette.end()) {
+                const int channelID = editor->getNextColorChannel();
+                if (channelID <= 0 || channelID > 999) {
+                    image->release();
+                    FLAlertLayer::create("PixelArt Importer",
+                        "No free color channels remain in this level. Remove some custom channels and try again.",
+                        "OK")->show();
+                    return;
+                }
+
+                const cocos2d::ccColor3B color{r, g, b};
+                auto action = ColorAction::create();
+                if (!action) continue;
+                // This mirrors ColorSelectPopup::create(ccColor3B): m_color is
+                // the stored static channel colour used by the editor.
+                action->m_color = color;
+                action->m_fromColor = color;
+                action->m_toColor = color;
+                action->m_playerColor = 0;
+                manager->setColorAction(action, channelID);
+                it = palette.emplace(key, channelID).first;
+            }
+
             auto object = editor->createObject(
                 kPixelObjectId,
                 {origin.x + x * kPixelWorldSize, origin.y + (outHeight - 1 - y) * kPixelWorldSize},
                 false
             );
             if (!object) continue;
-            const cocos2d::ccColor3B pixelColor{r, g, b};
-            object->setObjectColor(pixelColor);
-            // setObjectColor updates the Geometry Dash object colour data.
-            // GJSpriteColor is not a cocos2d::CCNode and has no setColor method.
+            object->setMainColorMode(it->second);
+            object->updateMainColor();
+            object->updateObjectEditorColor();
             ++created;
         }
     }
