@@ -1,11 +1,47 @@
 {
   "geode": "5.11.2",
-  "gd": {"android":"2.2081","win":"2.2081","mac":"2.2081"},
-  "id":"pixelart-importer",
-  "name":"PixelArt Importer",
-  "version":"v0.2.0",
-  "developer":"pholit228-spec",
-  "description":"Import raster images into the Geometry Dash level editor as coloured blocks.",
-  "repository":"https://github.com/pholit228-spec/PixelArtImporter",
-  "tags":["editor","utility","content"]
+  "gd": {
+    "android": "2.2081",
+    "win": "2.2081",
+    "mac": "2.2081"
+  },
+  "id": "pixelart-importer",
+  "name": "PixelArt Importer",
+  "version": "v0.3.0",
+  "developer": "pholit228-spec",
+  "description": "Import raster images into the Geometry Dash level editor as coloured blocks.",
+  "repository": "https://github.com/pholit228-spec/PixelArtImporter",
+  "tags": [
+    "editor",
+    "utility",
+    "content"
+  ],
+  "settings": {
+    "pixel-scale": {
+      "name": "Pixel block size",
+      "description": "Smaller values make each imported square smaller and pack the image more tightly.",
+      "type": "float",
+      "default": 0.25,
+      "min": 0.1,
+      "max": 0.5,
+      "control": {
+        "slider": true,
+        "slider-step": 0.05,
+        "input": true
+      }
+    },
+    "quality": {
+      "name": "Import quality",
+      "description": "Higher quality creates more pixel objects. Level 4 can create up to 20,000 objects and may slow down mobile devices.",
+      "type": "int",
+      "default": 2,
+      "min": 1,
+      "max": 4,
+      "control": {
+        "slider": true,
+        "slider-step": 1,
+        "input": true
+      }
+    }
+  }
 }
