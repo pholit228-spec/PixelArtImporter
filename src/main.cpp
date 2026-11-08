@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <string>
 #include <map>
+#include <limits>
 #include <tuple>
 #include <cctype>
 using namespace geode::prelude;
@@ -70,19 +71,30 @@ void importImage(std::filesystem::path const& path) {
         return;
     }
 
-    // Geometry Dash stores editor object colours as references to color channels.
-    // 8 levels per RGB component yields at most 512 palette entries.
-    constexpr int kPaletteLevels = 8;
-    auto quantize = [](uint8_t value) -> uint8_t {
-        constexpr int step = 255 / (kPaletteLevels - 1);
-        return static_cast<uint8_t>(std::clamp(
-            static_cast<int>(std::lround(static_cast<double>(value) / step)) * step, 0, 255
-        ));
-    };
+    // Use the full Geometry Dash custom-color range. Preserve exact RGB values
+    // until the level runs out of free channels; any remaining colors are mapped
+    // to the nearest allocated palette entry instead of aborting the import.
     using RGB = std::tuple<uint8_t, uint8_t, uint8_t>;
     std::map<RGB, int> palette;
     int created = 0;
     const cocos2d::CCPoint origin{150.f, 150.f};
+
+    auto nearestChannel = [&palette](uint8_t r, uint8_t g, uint8_t b) -> int {
+        int bestChannel = 0;
+        unsigned int bestDistance = std::numeric_limits<unsigned int>::max();
+        for (auto const& [rgb, channel] : palette) {
+            const auto [pr, pg, pb] = rgb;
+            const int dr = static_cast<int>(r) - pr;
+            const int dg = static_cast<int>(g) - pg;
+            const int db = static_cast<int>(b) - pb;
+            const unsigned int distance = static_cast<unsigned int>(dr * dr + dg * dg + db * db);
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                bestChannel = channel;
+            }
+        }
+        return bestChannel;
+    };
 
     for (int y = 0; y < outHeight; ++y) {
         const int sy = std::min(height - 1, static_cast<int>((y + .5) * height / outHeight));
@@ -92,33 +104,31 @@ void importImage(std::filesystem::path const& path) {
             const uint8_t a = channels == 4 ? pixels[index + 3] : 255;
             if (a <= kAlphaThreshold) continue;
 
-            const uint8_t r = quantize(pixels[index]);
-            const uint8_t g = quantize(pixels[index + 1]);
-            const uint8_t b = quantize(pixels[index + 2]);
+            const uint8_t r = pixels[index];
+            const uint8_t g = pixels[index + 1];
+            const uint8_t b = pixels[index + 2];
             const RGB key{r, g, b};
 
             auto it = palette.find(key);
             if (it == palette.end()) {
                 const int channelID = editor->getNextColorChannel();
-                if (channelID <= 0 || channelID > 999) {
-                    image->release();
-                    FLAlertLayer::create("PixelArt Importer",
-                        "No free color channels remain in this level. Remove some custom channels and try again.",
-                        "OK")->show();
-                    return;
+                if (channelID > 0 && channelID <= 999) {
+                    const cocos2d::ccColor3B color{r, g, b};
+                    auto action = ColorAction::create();
+                    if (!action) continue;
+                    action->m_color = color;
+                    action->m_fromColor = color;
+                    action->m_toColor = color;
+                    action->m_playerColor = 0;
+                    manager->setColorAction(action, channelID);
+                    it = palette.emplace(key, channelID).first;
+                } else {
+                    // The level has no more free custom channels. Reuse the closest
+                    // already-created channel so the image still imports completely.
+                    const int fallbackChannel = nearestChannel(r, g, b);
+                    if (fallbackChannel == 0) continue;
+                    it = palette.emplace(key, fallbackChannel).first;
                 }
-
-                const cocos2d::ccColor3B color{r, g, b};
-                auto action = ColorAction::create();
-                if (!action) continue;
-                // This mirrors ColorSelectPopup::create(ccColor3B): m_color is
-                // the stored static channel colour used by the editor.
-                action->m_color = color;
-                action->m_fromColor = color;
-                action->m_toColor = color;
-                action->m_playerColor = 0;
-                manager->setColorAction(action, channelID);
-                it = palette.emplace(key, channelID).first;
             }
 
             auto object = editor->createObject(
@@ -127,15 +137,8 @@ void importImage(std::filesystem::path const& path) {
                 false
             );
             if (!object) continue;
-            // Keep the channel reference in the saved object data, but do not call
-            // updateMainColor() here: on Android 2.2081 it can enter colorForMode()
-            // before the newly-created object has its editor color state initialized,
-            // causing a SIGSEGV (confirmed by the user's crash log).
             object->setMainColorMode(it->second);
-
-            // Apply the pixel RGB directly to the object's colorable sprite for the
-            // editor preview. The registered ColorAction remains the channel's saved
-            // color definition; the object channel reference is retained above.
+            // Avoid updateMainColor here: it caused colorForMode() SIGSEGV on Android.
             object->setObjectColor(cocos2d::ccColor3B{r, g, b});
             ++created;
         }
