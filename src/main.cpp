@@ -138,8 +138,17 @@ void importImage(std::filesystem::path const& path) {
             );
             if (!object) continue;
             object->setMainColorMode(it->second);
-            // Avoid updateMainColor here: it caused colorForMode() SIGSEGV on Android.
-            object->setObjectColor(cocos2d::ccColor3B{r, g, b});
+
+            // IMPORTANT: updateMainColor(ccColor3B) is the direct-color overload.
+            // The no-argument overload resolves m_activeMainColorID through the
+            // effect manager and previously crashed on Android during early setup.
+            // setObjectColor() alone does not refresh the colorable object sprite.
+            const cocos2d::ccColor3B pixelColor{r, g, b};
+            if (object->getMainColor()) {
+                object->updateMainColor(pixelColor);
+            } else {
+                log::warn("PixelArt Importer: object {} has no main color component", kPixelObjectId);
+            }
             ++created;
         }
     }
