@@ -127,9 +127,16 @@ void importImage(std::filesystem::path const& path) {
                 false
             );
             if (!object) continue;
+            // Keep the channel reference in the saved object data, but do not call
+            // updateMainColor() here: on Android 2.2081 it can enter colorForMode()
+            // before the newly-created object has its editor color state initialized,
+            // causing a SIGSEGV (confirmed by the user's crash log).
             object->setMainColorMode(it->second);
-            object->updateMainColor();
-            object->updateObjectEditorColor();
+
+            // Apply the pixel RGB directly to the object's colorable sprite for the
+            // editor preview. The registered ColorAction remains the channel's saved
+            // color definition; the object channel reference is retained above.
+            object->setObjectColor(cocos2d::ccColor3B{r, g, b});
             ++created;
         }
     }
