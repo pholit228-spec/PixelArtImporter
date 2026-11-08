@@ -14,7 +14,7 @@
 using namespace geode::prelude;
 
 namespace {
-constexpr int kMaxPixels = 2500;
+constexpr int kBaseMaxPixels = 2500;
 // NOTE: unverified that 207 has a colorable main/base sprite. The diagnostics
 // below log base/detail/main presence for the first objects to settle this.
 constexpr int kPixelObjectId = 207;
@@ -59,11 +59,24 @@ void importImage(std::filesystem::path const& path) {
         return;
     }
 
-    const double scale = std::max(1.0, std::sqrt(
-        (static_cast<double>(width) * height) / static_cast<double>(kMaxPixels)
+    // User-configurable output quality: each step doubles the pixel budget.
+    // Keep the cap conservative for mobile editors (up to 20,000 objects).
+    const int quality = std::clamp(
+        static_cast<int>(Mod::get()->getSettingValue<int64_t>("quality")), 1, 4
+    );
+    const int maxPixels = kBaseMaxPixels * (1 << (quality - 1));
+    const double downsample = std::max(1.0, std::sqrt(
+        (static_cast<double>(width) * height) / static_cast<double>(maxPixels)
     ));
-    const int outWidth = std::max(1, static_cast<int>(std::floor(width / scale)));
-    const int outHeight = std::max(1, static_cast<int>(std::floor(height / scale)));
+    const int outWidth = std::max(1, static_cast<int>(std::floor(width / downsample)));
+    const int outHeight = std::max(1, static_cast<int>(std::floor(height / downsample)));
+
+    // Geometry Dash's square object is 30 world units at scale 1.0.
+    // Smaller scale also reduces the spacing, so the pixel grid stays seamless.
+    const float pixelScale = std::clamp(
+        static_cast<float>(Mod::get()->getSettingValue<double>("pixel-scale")), 0.10f, 0.50f
+    );
+    const float pixelStep = kPixelWorldSize * pixelScale;
 
     auto manager = editor->m_effectManager;
     if (!manager) {
@@ -150,10 +163,11 @@ void importImage(std::filesystem::path const& path) {
 
             auto object = editor->createObject(
                 kPixelObjectId,
-                {origin.x + x * kPixelWorldSize, origin.y + (outHeight - 1 - y) * kPixelWorldSize},
+                {origin.x + x * pixelStep, origin.y + (outHeight - 1 - y) * pixelStep},
                 false
             );
             if (!object) continue;
+            object->setScale(pixelScale);
 
             const int channel = it->second;
             const cocos2d::ccColor3B pixelColor{r, g, b};
@@ -191,7 +205,8 @@ void importImage(std::filesystem::path const& path) {
 
     image->release();
     Notification::create(
-        fmt::format("Imported {} blocks ({}x{})", created, outWidth, outHeight),
+        fmt::format("Imported {} blocks ({}x{}, scale {}%, quality {}/4)", created, outWidth, outHeight,
+            static_cast<int>(std::lround(pixelScale * 100.f)), quality),
         NotificationIcon::Success
     )->show();
 }
