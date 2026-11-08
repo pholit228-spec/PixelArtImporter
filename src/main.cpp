@@ -15,7 +15,8 @@ using namespace geode::prelude;
 
 namespace {
 constexpr int kMaxPixels = 2500;
-// Geometry Dash object 207 is the colorable flat square, unlike the default solid block (ID 1).
+// NOTE: unverified that 207 has a colorable main/base sprite. The diagnostics
+// below log base/detail/main presence for the first objects to settle this.
 constexpr int kPixelObjectId = 207;
 constexpr float kPixelWorldSize = 30.f;
 constexpr uint8_t kAlphaThreshold = 32;
@@ -71,17 +72,35 @@ void importImage(std::filesystem::path const& path) {
         return;
     }
 
-    // Use the full Geometry Dash custom-color range. Preserve exact RGB values
-    // until the level runs out of free channels; any remaining colors are mapped
-    // to the nearest allocated palette entry instead of aborting the import.
+    // The editor may read channel defaults from the level settings' own effect
+    // manager instead of the layer's one. Write every channel color to both so
+    // whichever one is used has the color.
+    GJEffectManager* settingsManager = nullptr;
+    if (editor->m_levelSettings) settingsManager = editor->m_levelSettings->m_effectManager;
+    const bool separateSettingsManager = settingsManager && settingsManager != manager;
+    if (!separateSettingsManager) settingsManager = nullptr;
+
     using RGB = std::tuple<uint8_t, uint8_t, uint8_t>;
     std::map<RGB, int> palette;
     int created = 0;
-    // getNextColorChannel() reports the first available channel. Calling it again
-    // before adding a channel action can return that same ID, so reserve a local
-    // monotonically increasing range for this import.
     int nextChannelID = editor->getNextColorChannel();
+    const int firstChannelID = nextChannelID;
     const cocos2d::CCPoint origin{150.f, 150.f};
+
+    log::info("PixelArt Importer: start, firstFreeChannel={}, separateSettingsManager={}, out={}x{}",
+        firstChannelID, separateSettingsManager, outWidth, outHeight);
+
+    auto registerChannel = [](GJEffectManager* mgr, int channelID, cocos2d::ccColor3B color) -> bool {
+        auto action = ColorAction::create();
+        if (!action) return false;
+        action->m_colorID = channelID;
+        action->m_color = color;
+        action->m_fromColor = color;
+        action->m_toColor = color;
+        action->m_playerColor = 0;
+        mgr->setColorAction(action, channelID);
+        return true;
+    };
 
     auto nearestChannel = [&palette](uint8_t r, uint8_t g, uint8_t b) -> int {
         int bestChannel = 0;
@@ -118,19 +137,11 @@ void importImage(std::filesystem::path const& path) {
                 const int channelID = nextChannelID;
                 if (channelID > 0 && channelID <= 999) {
                     const cocos2d::ccColor3B color{r, g, b};
-                    auto action = ColorAction::create();
-                    if (!action) continue;
-                    action->m_colorID = channelID;
-                    action->m_color = color;
-                    action->m_fromColor = color;
-                    action->m_toColor = color;
-                    action->m_playerColor = 0;
-                    manager->setColorAction(action, channelID);
+                    if (!registerChannel(manager, channelID, color)) continue;
+                    if (settingsManager) registerChannel(settingsManager, channelID, color);
                     ++nextChannelID;
                     it = palette.emplace(key, channelID).first;
                 } else {
-                    // The level has no more free custom channels. Reuse the closest
-                    // already-created channel so the image still imports completely.
                     const int fallbackChannel = nearestChannel(r, g, b);
                     if (fallbackChannel == 0) continue;
                     it = palette.emplace(key, fallbackChannel).first;
@@ -143,21 +154,40 @@ void importImage(std::filesystem::path const& path) {
                 false
             );
             if (!object) continue;
-            object->setMainColorMode(it->second);
 
-            // IMPORTANT: updateMainColor(ccColor3B) is the direct-color overload.
-            // The no-argument overload resolves m_activeMainColorID through the
-            // effect manager and previously crashed on Android during early setup.
-            // setObjectColor() alone does not refresh the colorable object sprite.
+            const int channel = it->second;
             const cocos2d::ccColor3B pixelColor{r, g, b};
+
+            // Point every color component the object has at the channel directly,
+            // so it does not matter whether 207 uses its base or its detail color.
+            object->setMainColorMode(channel);
+            if (object->m_baseColor) {
+                object->m_baseColor->m_colorID = channel;
+                object->m_baseColor->m_defaultColorID = channel;
+            }
+            if (object->m_detailColor) {
+                object->m_detailColor->m_colorID = channel;
+                object->m_detailColor->m_defaultColorID = channel;
+            }
+
+            // Immediate visual tint (not saved; the channel is what persists).
+            object->setObjectColor(pixelColor);
             if (object->getMainColor()) {
                 object->updateMainColor(pixelColor);
-            } else {
-                log::warn("PixelArt Importer: object {} has no main color component", kPixelObjectId);
+            }
+
+            if (created < 5) {
+                log::info("PixelArt Importer: obj id={} channel={} activeMain={} base={} detail={} main={}",
+                    object->m_objectID, channel, object->m_activeMainColorID,
+                    object->m_baseColor != nullptr, object->m_detailColor != nullptr,
+                    object->getMainColor() != nullptr);
             }
             ++created;
         }
     }
+
+    log::info("PixelArt Importer: done, created={}, channelsUsed={}, firstChannel={}",
+        created, palette.size(), firstChannelID);
 
     image->release();
     Notification::create(
